@@ -3,6 +3,13 @@ from curl_cffi.requests import AsyncSession
 from selectolax.parser import HTMLParser
 import random
 
+
+def get_asins() -> list[str]:
+    """Get a list of ASINs."""
+    with open("asins.txt", "r") as file:
+        return file.read().splitlines()
+
+
 def get_proxies() -> list[str]:
     """Get a list of proxies."""
     with open("proxies.txt", "r") as file:
@@ -13,12 +20,13 @@ def get_proxies() -> list[str]:
             for ip, port, username, password in [proxy.split(":")]
         ]
 
+
 class ProxyRotator:
     def __init__(self, proxies: list[str]):
         self.proxies = proxies
         self.current_proxy = None
         self.rotate_proxy()
-        self.semaphore = asyncio.Semaphore(10)  # Limit the number of concurrent requests
+        self.semaphore = asyncio.Semaphore(10)  # Limit concurrent requests
 
     def rotate_proxy(self) -> None:
         """Select a new proxy from the list."""
@@ -39,7 +47,7 @@ class ProxyRotator:
                 try:
                     response = await session.get(URL, impersonate="safari", proxy=self.current_proxy)
                     if response.status_code == 200:
-                        print(f"{self.current_proxy} - {URL}")
+                        print(f"Proxy: {self.current_proxy}")
                         return response.text
                     else:
                         print(f"Error: {response.status_code}, URL: {URL}")
@@ -82,7 +90,7 @@ async def scrape_amazon_product(session: AsyncSession, ASIN: str, proxy_rotator:
     print(f"Price Fraction: {price_fraction}")
 
 async def main():
-    ASINs = ["B09LNW3CY2", "B009KYJAJY", "B0B2D77YB8", "B0D3KPGFHL"]
+    ASINs = get_asins()
     proxies = get_proxies()
     proxy_rotator = ProxyRotator(proxies)
     async with AsyncSession() as session:
