@@ -3,25 +3,33 @@ from curl_cffi.requests import AsyncSession
 from selectolax.parser import HTMLParser
 import random
 
+
+def get_proxies() -> list[str]:
+    """Get a list of proxies."""
+    with open("proxies.txt", "r") as file:
+        proxies = file.read().splitlines()
+        return [
+            f"http://{username}:{password}@{ip}:{port}"
+            for proxy in proxies
+            for ip, port, username, password in [proxy.split(":")]
+        ]
+
+
 class ProxyRotator:
-    def __init__(self):
-        self.proxies = []
+    def __init__(self, proxies: list[str]):
+        self.proxies = proxies
         self.current_proxy = None
-
-    async def initialize(self):
-        self.proxies = await self.get_proxies()
         self.rotate_proxy()
-
-    async def get_proxies(self) -> list[str]:
-        """Get a list of proxies from the API."""
-        async with AsyncSession() as session:
-            response = await session.get("https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&proxy_format=protocolipport&format=text")
-            return response.text.splitlines()
 
     def rotate_proxy(self) -> None:
         """Select a new proxy from the list."""
         if self.proxies:
             self.current_proxy = random.choice(self.proxies)
+
+    def remove_proxy(self) -> None:
+        """Remove the current proxy from the list."""
+        if self.current_proxy:
+            self.proxies.remove(self.current_proxy)
 
     async def request_content(self, session: AsyncSession, URL: str) -> str:
         """Request the content of a URL and return it as a string."""
@@ -31,14 +39,15 @@ class ProxyRotator:
             try:
                 response = await session.get(URL, impersonate="safari", proxy=self.current_proxy)
                 if response.status_code == 200:
+                    print(f"{self.current_proxy} - {URL}")
                     return response.text
                 else:
                     print(f"Error: {response.status_code}, URL: {URL}")
-                    self.proxies.remove(self.current_proxy)
+                    self.remove_proxy()
                     self.rotate_proxy()
             except Exception as error:
                 print(f"Error: {error}, URL: {URL}")
-                self.proxies.remove(self.current_proxy)
+                self.remove_proxy()
                 self.rotate_proxy()
 
 async def scrape_amazon_product(session: AsyncSession, ASIN: str, proxy_rotator: ProxyRotator) -> None:
@@ -74,8 +83,8 @@ async def scrape_amazon_product(session: AsyncSession, ASIN: str, proxy_rotator:
 
 async def main():
     ASINs = ["B09LNW3CY2", "B009KYJAJY", "B0B2D77YB8", "B0D3KPGFHL"]
-    proxy_rotator = ProxyRotator()
-    await proxy_rotator.initialize()
+    proxies = get_proxies()
+    proxy_rotator = ProxyRotator(proxies)
     async with AsyncSession() as session:
         tasks = [scrape_amazon_product(session, ASIN, proxy_rotator) for ASIN in ASINs]
         await asyncio.gather(*tasks)
