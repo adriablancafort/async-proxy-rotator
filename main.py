@@ -3,7 +3,6 @@ from curl_cffi.requests import AsyncSession
 from selectolax.parser import HTMLParser
 import random
 
-
 def get_proxies() -> list[str]:
     """Get a list of proxies."""
     with open("proxies.txt", "r") as file:
@@ -14,12 +13,12 @@ def get_proxies() -> list[str]:
             for ip, port, username, password in [proxy.split(":")]
         ]
 
-
 class ProxyRotator:
     def __init__(self, proxies: list[str]):
         self.proxies = proxies
         self.current_proxy = None
         self.rotate_proxy()
+        self.semaphore = asyncio.Semaphore(10)  # Limit the number of concurrent requests
 
     def rotate_proxy(self) -> None:
         """Select a new proxy from the list."""
@@ -33,22 +32,23 @@ class ProxyRotator:
 
     async def request_content(self, session: AsyncSession, URL: str) -> str:
         """Request the content of a URL and return it as a string."""
-        while True:
-            if not self.current_proxy:
-                assert False, "No more proxies available."
-            try:
-                response = await session.get(URL, impersonate="safari", proxy=self.current_proxy)
-                if response.status_code == 200:
-                    print(f"{self.current_proxy} - {URL}")
-                    return response.text
-                else:
-                    print(f"Error: {response.status_code}, URL: {URL}")
+        async with self.semaphore:
+            while True:
+                if not self.current_proxy:
+                    assert False, "No more proxies available."
+                try:
+                    response = await session.get(URL, impersonate="safari", proxy=self.current_proxy)
+                    if response.status_code == 200:
+                        print(f"{self.current_proxy} - {URL}")
+                        return response.text
+                    else:
+                        print(f"Error: {response.status_code}, URL: {URL}")
+                        self.remove_proxy()
+                        self.rotate_proxy()
+                except Exception as error:
+                    print(f"Error: {error}, URL: {URL}")
                     self.remove_proxy()
                     self.rotate_proxy()
-            except Exception as error:
-                print(f"Error: {error}, URL: {URL}")
-                self.remove_proxy()
-                self.rotate_proxy()
 
 async def scrape_amazon_product(session: AsyncSession, ASIN: str, proxy_rotator: ProxyRotator) -> None:
     """Scrape the price of an Amazon product given its ASIN."""
@@ -72,13 +72,13 @@ async def scrape_amazon_product(session: AsyncSession, ASIN: str, proxy_rotator:
     price_fraction_element = tree.css_first("span.a-price-fraction")
 
     product_title = title_element.text().strip() if title_element else "Title not found"
-    pryce_symbol = price_symbol_element.text() if price_symbol_element else "Symbol not found"
-    pryce_whole = price_whole_element.text().replace(".", "") if price_whole_element else "Whole part not found"
+    price_symbol = price_symbol_element.text() if price_symbol_element else "Symbol not found"
+    price_whole = price_whole_element.text().replace(".", "") if price_whole_element else "Whole part not found"
     price_fraction = price_fraction_element.text() if price_fraction_element else "Fraction not found"
 
     print(f"Product Title: {product_title}")
-    print(f"Price Symbol: {pryce_symbol}")
-    print(f"Price Whole: {pryce_whole}")
+    print(f"Price Symbol: {price_symbol}")
+    print(f"Price Whole: {price_whole}")
     print(f"Price Fraction: {price_fraction}")
 
 async def main():
