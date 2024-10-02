@@ -65,14 +65,13 @@ async def scrape_amazon_product(session: AsyncSession, ASIN: str, proxy_rotator:
     captcha_found = True
     while captcha_found:
         html = await proxy_rotator.request_content(session, URL)
-        tree = HTMLParser(html)
-
-        captcha_title = tree.css_first("h4")
-        if captcha_title and "Enter the characters you see below" in captcha_title.text():
+        if "Enter the characters you see below" in html:
             print(f"Error: CAPTCHA, URL: {URL}")
             proxy_rotator.rotate_proxy()
         else:
             captcha_found = False
+
+    tree = HTMLParser(html)
 
     title_element = tree.css_first("h1 span")
     price_symbol_element = tree.css_first("span.a-price-symbol")
